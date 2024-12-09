@@ -4,15 +4,19 @@ import struct
 import threading
 import time
 import PySignal
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class VaultMultiPublisher:
-    def __init__(self, group="224.1.1.1", port=5004, ttl=2, timeout=2, message="there is nothing to see", debug=False):
+    def __init__(self, group="224.1.1.1", port=5004, ttl=2, timeout=2, message="there is nothing to see"):
         self.group = group
         self.port = port
         self.ttl = ttl
         self.stop_advertising = False
-        self.debug = debug
+        logger.info("start multicast publisher with msg: {}".format(message))
         self.timeout = timeout
         self.message = message
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -20,13 +24,11 @@ class VaultMultiPublisher:
         threading.Timer(5, self.advertise).start()
 
     def update_message(self, message):
-        if self.debug:
-            print("bsd msg update: {}".format(message))
+        logger.info("bsd msg update: {}".format(message))
         self.message = message
 
     def advertise(self):
-        if self.debug:
-            print("bsd pub: {}".format(self.message.encode("utf-8")))
+        logger.debug("bsd pub: {}".format(self.message.encode("utf-8")))
         if not self.stop_advertising:
             self.sock.sendto(self.message.encode("utf-8"), (self.group, self.port))
         if not self.stop_advertising:
@@ -41,9 +43,9 @@ class VaultMultiPublisher:
 class VaultMultiListener:
     recv_signal = PySignal.ClassSignal()
 
-    def __init__(self, group="224.1.1.1", port=5004, timeout=2, debug=False):
+    def __init__(self, group="224.1.1.1", port=5004, timeout=2):
         self.timeout = timeout
-        self.debug = debug
+        logger.info("start multicast listener")
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(('', port))
@@ -62,12 +64,10 @@ class VaultMultiListener:
                 message = self.sock.recvfrom(1400)
                 json_data = json.loads(message[0].decode("utf-8"))
             except Exception as e:
-                if self.debug:
-                    print("error socket: {}".format(e))
-                pass
+                logger.debug("error socket: {}".format(e))
+
             if json_data:
-                if self.debug:
-                    print("mc recv {}".format(json_data))
+                logger.info("mc recv {}".format(json_data))
                 self.recv_signal.emit(json_data)
             time.sleep(0.2)
 
