@@ -97,8 +97,7 @@ class VaultMultiListener(StoppableWorker):
         """Haupt-Schleife für den Multicast-Empfang."""
         while not self._stop_event.is_set():
             try:
-                # sock.recvfrom blockiert maximal 'timeout' Sekunden
-                message = self.sock.recvfrom(1400)
+                message = self._sock.recvfrom(1400)
                 try:
                     json_data = json.loads(message[0].decode("utf-8"))
                     logger.debug(f"mc recv {json_data} from {address}")
