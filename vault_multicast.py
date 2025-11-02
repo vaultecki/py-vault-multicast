@@ -82,6 +82,7 @@ class VaultMultiListener(StoppableWorker):
     def __init__(self, group="224.1.1.1", port=5004, timeout=2):
         super().__init__()
         self.timeout = timeout
+        logger.info("start multicast listener")
         self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self._sock.bind(('', port))
@@ -97,11 +98,16 @@ class VaultMultiListener(StoppableWorker):
         while not self._stop_event.is_set():
             try:
                 # sock.recvfrom blockiert maximal 'timeout' Sekunden
-                message, address = self._sock.recvfrom(1400)
-                json_data = json.loads(message.decode("utf-8"))
+                message = self.sock.recvfrom(1400)
+                try:
+                    json_data = json.loads(message[0].decode("utf-8"))
+                    logger.debug(f"mc recv {json_data} from {address}")
+                except Exception as e:
+                    logger.debug("error socket: {}".format(e))
 
-                logger.debug(f"mc recv {json_data} from {address}")
-                self.recv_signal.emit(json_data)
+                if json_data:
+                    logger.info("mc recv {}".format(json_data))
+                    self.recv_signal.emit(json_data)
 
             except socket.timeout:
                 # Dies ist im Normalbetrieb erwartet (keine Nachricht empfangen)
