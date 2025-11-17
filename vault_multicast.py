@@ -1,20 +1,68 @@
+# Copyright [2025] [ecki]
+# SPDX-License-Identifier: Apache-2.0
+
 import logging
 import json
 import socket
 import struct
 import threading
 import time
-from typing import Optional, Callable
+from typing import Optional, Callable, Dict, Any
+from dataclasses import dataclass, field
+from datetime import datetime
 import PySignal
 
 logger = logging.getLogger(__name__)
 
-# Konstanten
+# Constants
 DEFAULT_MULTICAST_GROUP = "224.1.1.1"
 DEFAULT_PORT = 5004
 DEFAULT_TTL = 2
 DEFAULT_TIMEOUT = 2.0
 DEFAULT_BUFFER_SIZE = 1400
+
+
+@dataclass
+class MulticastMetrics:
+    """Tracks multicast communication metrics."""
+    packets_sent: int = 0
+    packets_received: int = 0
+    bytes_sent: int = 0
+    bytes_received: int = 0
+    errors: int = 0
+    active_services: int = 0
+    start_time: datetime = field(default_factory=datetime.now)
+
+    def reset(self):
+        """Reset all metrics."""
+        self.packets_sent = 0
+        self.packets_received = 0
+        self.bytes_sent = 0
+        self.bytes_received = 0
+        self.errors = 0
+        self.start_time = datetime.now()
+
+    def uptime_seconds(self) -> float:
+        """Calculate uptime in seconds."""
+        return (datetime.now() - self.start_time).total_seconds()
+
+    def packets_per_second(self) -> float:
+        """Calculate average packets per second."""
+        uptime = self.uptime_seconds()
+        return (self.packets_sent + self.packets_received) / uptime if uptime > 0 else 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert metrics to dictionary."""
+        return {
+            "packets_sent": self.packets_sent,
+            "packets_received": self.packets_received,
+            "bytes_sent": self.bytes_sent,
+            "bytes_received": self.bytes_received,
+            "errors": self.errors,
+            "active_services": self.active_services,
+            "uptime_seconds": self.uptime_seconds(),
+            "packets_per_second": self.packets_per_second()
+        }
 
 
 class StoppableWorker:
@@ -83,7 +131,7 @@ class StoppableWorker:
 
 
 class VaultMultiPublisher(StoppableWorker):
-    """Multicast Publisher for Vault messages."""
+    """Multicast Publisher for Vault messages with integrated metrics."""
 
     def __init__(
             self,
@@ -109,6 +157,10 @@ class VaultMultiPublisher(StoppableWorker):
         self.timeout = timeout
         self._message = message
         self._message_lock = threading.Lock()
+
+        # Metrics
+        self.metrics = MulticastMetrics()
+        self._metrics_lock = threading.Lock()
 
         # Initialize socket
         self._sock: Optional[socket.socket] = None
@@ -136,7 +188,7 @@ class VaultMultiPublisher(StoppableWorker):
                 self._sock = None
 
     def run(self) -> None:
-        """Main loop for sending multicast messages."""
+        """Main loop for sending multicast messages with metrics."""
         logger.info(f"VaMuPu starting advertisement loop to {self.group}:{self.port}")
 
         # Initial delay (5 seconds)
@@ -150,11 +202,23 @@ class VaultMultiPublisher(StoppableWorker):
                     current_message = self._message
 
                 # Send message
-                self._sock.sendto(current_message.encode("utf-8"), (self.group, self.port))
-                logger.debug(f"VaMuPu published: {current_message[:100]}...")
+                message_bytes = current_message.encode("utf-8")
+                self._sock.sendto(message_bytes, (self.group, self.port))
+
+                # Update metrics
+                with self._metrics_lock:
+                    self.metrics.packets_sent += 1
+                    self.metrics.bytes_sent += len(message_bytes)
+
+                logger.debug(f"VaMuPu published: {current_message[:100]}... ({len(message_bytes)} bytes)")
 
             except Exception as e:
                 logger.error(f"Error sending multicast: {e}")
+
+                # Update error count
+                with self._metrics_lock:
+                    self.metrics.errors += 1
+
                 # Try to reinitialize socket on error
                 if not self._stop_event.is_set():
                     try:
@@ -189,9 +253,24 @@ class VaultMultiPublisher(StoppableWorker):
         """
         self.message = message
 
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get current metrics (thread-safe).
+
+        Returns:
+            Dictionary containing all current metrics
+        """
+        with self._metrics_lock:
+            return self.metrics.to_dict()
+
+    def reset_metrics(self) -> None:
+        """Reset all metrics counters."""
+        with self._metrics_lock:
+            self.metrics.reset()
+            logger.info("Publisher metrics reset")
+
 
 class VaultMultiListener(StoppableWorker):
-    """Multicast Listener for Vault messages."""
+    """Multicast Listener for Vault messages with integrated metrics."""
 
     recv_signal = PySignal.ClassSignal()
 
@@ -218,6 +297,11 @@ class VaultMultiListener(StoppableWorker):
         self.timeout = timeout
         self.buffer_size = buffer_size
         self.callback = callback
+
+        # Metrics
+        self.metrics = MulticastMetrics()
+        self._metrics_lock = threading.Lock()
+        self._service_addresses = set()
 
         # Initialize socket
         self._sock: Optional[socket.socket] = None
@@ -255,7 +339,7 @@ class VaultMultiListener(StoppableWorker):
                 self._sock = None
 
     def run(self) -> None:
-        """Main loop for receiving multicast messages."""
+        """Main loop for receiving multicast messages with metrics."""
         logger.info("VaMuLi entering receive loop")
 
         while not self._stop_event.is_set():
@@ -263,11 +347,23 @@ class VaultMultiListener(StoppableWorker):
                 # Receive message
                 data, address = self._sock.recvfrom(self.buffer_size)
 
+                # Update metrics
+                with self._metrics_lock:
+                    self.metrics.packets_received += 1
+                    self.metrics.bytes_received += len(data)
+
                 # Parse JSON
                 try:
                     json_data = json.loads(data.decode("utf-8"))
                     logger.debug(f"mc recv {json_data} from {address}")
                     logger.info(f"mc recv {json_data}")
+
+                    # Track unique service addresses
+                    service_addr = json_data.get("addr")
+                    if service_addr:
+                        with self._metrics_lock:
+                            self._service_addresses.add(service_addr)
+                            self.metrics.active_services = len(self._service_addresses)
 
                     # Emit signal
                     self.recv_signal.emit(json_data)
@@ -278,11 +374,17 @@ class VaultMultiListener(StoppableWorker):
                             self.callback(json_data)
                         except Exception as cb_error:
                             logger.error(f"Callback error: {cb_error}")
+                            with self._metrics_lock:
+                                self.metrics.errors += 1
 
                 except json.JSONDecodeError as e:
                     logger.warning(f"Invalid JSON from {address}: {e}")
+                    with self._metrics_lock:
+                        self.metrics.errors += 1
                 except UnicodeDecodeError as e:
                     logger.warning(f"Invalid UTF-8 data from {address}: {e}")
+                    with self._metrics_lock:
+                        self.metrics.errors += 1
 
             except socket.timeout:
                 # Normal during wait time - not an error
@@ -292,12 +394,32 @@ class VaultMultiListener(StoppableWorker):
                 if self._stop_event.is_set():
                     break
                 logger.error(f"Socket error: {e}")
+                with self._metrics_lock:
+                    self.metrics.errors += 1
                 break
             except Exception as e:
                 logger.error(f"Unexpected error in receive loop: {e}", exc_info=True)
+                with self._metrics_lock:
+                    self.metrics.errors += 1
                 if self._stop_event.is_set():
                     break
                 time.sleep(0.1)  # Short delay on unexpected errors
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get current metrics (thread-safe).
+
+        Returns:
+            Dictionary containing all current metrics
+        """
+        with self._metrics_lock:
+            return self.metrics.to_dict()
+
+    def reset_metrics(self) -> None:
+        """Reset all metrics counters."""
+        with self._metrics_lock:
+            self.metrics.reset()
+            self._service_addresses.clear()
+            logger.info("Listener metrics reset")
 
 
 def main():
@@ -307,15 +429,17 @@ def main():
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Test listener
+    # Test listener with metrics
     logger.info("=== Testing Listener ===")
     with VaultMultiListener() as listener:
         try:
-            input("Press Enter to stop listener...\n")
+            input("Press Enter to show metrics and stop listener...\n")
+            metrics = listener.get_metrics()
+            logger.info(f"Listener metrics: {metrics}")
         except KeyboardInterrupt:
             pass
 
-    # Test publisher
+    # Test publisher with metrics
     logger.info("\n=== Testing Publisher ===")
     msg = {
         "type": "vault-test",
@@ -326,7 +450,9 @@ def main():
 
     with VaultMultiPublisher(message=json.dumps(msg), timeout=1) as publisher:
         try:
-            input("Press Enter to stop publisher...\n")
+            input("Press Enter to show metrics and stop publisher...\n")
+            metrics = publisher.get_metrics()
+            logger.info(f"Publisher metrics: {metrics}")
         except KeyboardInterrupt:
             pass
 
@@ -335,4 +461,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
