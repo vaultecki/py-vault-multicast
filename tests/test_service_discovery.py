@@ -1,12 +1,12 @@
 import threading
 from datetime import datetime, timedelta
+from typing import ClassVar
 
 import pytest
 from psygnal import Signal
 
 import vault_multicast_service_discovery as vsd
 from vault_multicast_service_discovery import ServiceEntry, VaultServiceDiscovery
-
 
 # ---------------------------------------------------------------------------
 # ServiceEntry
@@ -39,7 +39,7 @@ class FakeListener:
     """Stand-in for vault_multicast.VaultMultiListener that does no networking."""
 
     recv_signal = Signal(dict)
-    instances = []
+    instances: ClassVar[list] = []
 
     def __init__(self, *args, **kwargs):
         self.started = False

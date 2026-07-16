@@ -1,15 +1,16 @@
 # Copyright [2025] [ecki]
 # SPDX-License-Identifier: Apache-2.0
 
-import logging
 import json
+import logging
 import socket
 import struct
 import threading
 import time
-from typing import Optional, Callable, Dict, Any
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Callable, Dict, Optional
+
 from psygnal import Signal
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,6 @@ class StoppableWorker:
 
     def _cleanup_resources(self) -> None:
         """Hook for subclasses to clean up resources."""
-        pass
 
     def run(self) -> None:
         """The main work loop of the thread. MUST be overridden in subclass."""
@@ -211,7 +211,9 @@ class VaultMultiPublisher(StoppableWorker):
                     self.metrics.packets_sent += 1
                     self.metrics.bytes_sent += len(message_bytes)
 
-                logger.debug(f"VaMuPu published: {current_message[:100]}... ({len(message_bytes)} bytes)")
+                logger.debug(
+                    f"VaMuPu published: {current_message[:100]}... ({len(message_bytes)} bytes)"
+                )
 
             except Exception as e:
                 logger.error(f"Error sending multicast: {e}")
@@ -388,7 +390,7 @@ class VaultMultiListener(StoppableWorker):
                     with self._metrics_lock:
                         self.metrics.errors += 1
 
-            except socket.timeout:
+            except TimeoutError:
                 # Normal during wait time - not an error
                 continue
             except OSError as e:

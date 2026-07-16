@@ -25,6 +25,17 @@ dev = [
 [tool.setuptools]
 py-modules = ["vault_multicast", "vault_multicast_service_discovery"]
 
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4", "PIE", "RUF"]
+ignore = [
+    "UP006", # non-pep585-annotation: keep typing.Dict/List for readability
+    "UP035", # deprecated-import: same as above
+    "UP045", # non-pep604-annotation-optional: keep Optional[...] for readability
+]
+
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true

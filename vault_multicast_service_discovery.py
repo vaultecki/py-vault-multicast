@@ -1,17 +1,17 @@
 # Copyright [2025] [ecki]
 # SPDX-License-Identifier: Apache-2.0
 
-import sys
 import logging
 import queue
-import threading
-from typing import Dict, Any, Optional
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import Any, Dict, Optional
 
-import PyQt6.QtWidgets
 import PyQt6.QtCore
+import PyQt6.QtWidgets
 from psygnal import Signal
+
 import vault_multicast
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
 
     Features:
     - Service timeout (automatically removes old entries after 30 seconds)
-    - Thread-safe service management
+    - Listener events are queued and dispatched on the GUI thread
     - Real-time metrics display
     - Data validation
     - Manual refresh capability
@@ -56,14 +56,13 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
 
         self.type_filter = type_filter
         self.services: Dict[str, ServiceEntry] = {}
-        self._lock = threading.Lock()
         self._is_running = True
 
         # The listener emits recv_signal from its own background thread, but
         # Qt widgets may only be touched from the GUI thread. Queue the raw
         # data here and dispatch it on the GUI thread via a timer instead of
         # handling it directly in the signal callback.
-        self._pending_services: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+        self._pending_services: queue.Queue[Dict[str, Any]] = queue.Queue()
 
         self._setup_ui()
         self._start_listener()
@@ -174,13 +173,13 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
             metrics = self.listener.get_metrics()
 
             # Update active services count from our tracked services
-            with self._lock:
-                active_count = sum(1 for s in self.services.values() if s.is_alive)
+            active_count = sum(1 for s in self.services.values() if s.is_alive)
 
             self.lbl_active_services.setText(f"Active Services: {active_count}")
             self.lbl_packets_received.setText(f"Packets Received: {metrics['packets_received']}")
+            bytes_received = metrics['bytes_received']
             self.lbl_bytes_received.setText(
-                f"Bytes Received: {metrics['bytes_received']:,} ({metrics['bytes_received'] / 1024:.1f} KB)"
+                f"Bytes Received: {bytes_received:,} ({bytes_received / 1024:.1f} KB)"
             )
             self.lbl_errors.setText(f"Errors: {metrics['errors']}")
             self.lbl_uptime.setText(f"Uptime: {metrics['uptime_seconds']:.0f}s")
@@ -205,11 +204,8 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
                 logger.warning(f"Missing required field: {field}")
                 return False
 
-        # Check type filter
-        if self.type_filter and self.type_filter not in data.get("type", ""):
-            return False
-
-        return True
+        # Check type filter: no filter, or the filter matches the type
+        return not self.type_filter or self.type_filter in data.get("type", "")
 
     def _on_service_discovered(self, data: Dict[str, Any]):
         """Callback when service is discovered.
@@ -222,17 +218,16 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
 
         addr: str = data["addr"]
 
-        with self._lock:
-            if addr in self.services:
-                # Update existing service
-                self.services[addr].last_seen = datetime.now()
-                self.services[addr].data = data
-                self._update_tree_item(self.services[addr])
-            else:
-                # Add new service
-                service = ServiceEntry(data=data, last_seen=datetime.now())
-                self.services[addr] = service
-                self._add_tree_item(service)
+        if addr in self.services:
+            # Update existing service
+            self.services[addr].last_seen = datetime.now()
+            self.services[addr].data = data
+            self._update_tree_item(self.services[addr])
+        else:
+            # Add new service
+            service = ServiceEntry(data=data, last_seen=datetime.now())
+            self.services[addr] = service
+            self._add_tree_item(service)
 
         logger.info(f"Service discovered: {data.get('name', 'unknown')} at {addr}")
 
@@ -252,25 +247,23 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
 
     def _cleanup_old_services(self):
         """Remove services not seen for SERVICE_TIMEOUT_SECONDS."""
-        with self._lock:
-            to_remove = []
-            for addr, service in self.services.items():
-                if not service.is_alive:
-                    to_remove.append(addr)
-                    if service.tree_item:
-                        index = self.tree.indexOfTopLevelItem(service.tree_item)
-                        if index >= 0:
-                            self.tree.takeTopLevelItem(index)
+        to_remove = []
+        for addr, service in self.services.items():
+            if not service.is_alive:
+                to_remove.append(addr)
+                if service.tree_item:
+                    index = self.tree.indexOfTopLevelItem(service.tree_item)
+                    if index >= 0:
+                        self.tree.takeTopLevelItem(index)
 
-            for addr in to_remove:
-                logger.info(f"Service timeout: {addr}")
-                del self.services[addr]
+        for addr in to_remove:
+            logger.info(f"Service timeout: {addr}")
+            del self.services[addr]
 
     def _refresh_services(self):
         """Manual refresh - removes all services for new search."""
-        with self._lock:
-            self.services.clear()
-            self.tree.clear()
+        self.services.clear()
+        self.tree.clear()
 
         if hasattr(self, 'listener'):
             self.listener.reset_metrics()
@@ -295,13 +288,12 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         # Get service data
         addr = selected_items[0].data(0, PyQt6.QtCore.Qt.ItemDataRole.UserRole)
 
-        with self._lock:
-            if addr in self.services:
-                service_data = self.services[addr].data
-                self.return_signal.emit(service_data)
-                logger.info(f"Connecting to service: {addr}")
-                self.stop()
-                self.hide()
+        if addr in self.services:
+            service_data = self.services[addr].data
+            self.return_signal.emit(service_data)
+            logger.info(f"Connecting to service: {addr}")
+            self.stop()
+            self.hide()
 
     def stop(self):
         """Stop listener and timers."""
@@ -372,11 +364,10 @@ class TestMainWindow(PyQt6.QtWidgets.QMainWindow):
 
     def _check_bsd_widget(self):
         """Check if discovery widget was closed."""
-        if self.bsd:
-            if not self.bsd.isVisible():
-                self.bsd.return_signal.disconnect(self.on_submit_value)
-                self.bsd.stop()
-                self.bsd = None
+        if self.bsd and not self.bsd.isVisible():
+            self.bsd.return_signal.disconnect(self.on_submit_value)
+            self.bsd.stop()
+            self.bsd = None
 
     def on_submit_value(self, value: Dict[str, Any]):
         """Handle selected service data."""

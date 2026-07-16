@@ -470,7 +470,8 @@ python -m pytest tests/
 - 🐛 Fixed `VaultServiceDiscovery` touching Qt widgets directly from the listener's background thread; discovered services are now queued and dispatched on the GUI thread
 - 🐛 Fixed missing `threading` import in `vault_multicast_service_discovery.py`
 - 🐛 Fixed `VaultMultiListener.reset_metrics()` not resetting `active_services` after clearing tracked addresses
-- ✅ Added a pytest suite covering both modules; `ruff` and `mypy` now run clean
+- 🧹 Removed the now-redundant `threading.Lock` in `VaultServiceDiscovery`; service-dict access is confined to the GUI thread by the dispatch timer above
+- ✅ Added a pytest suite covering both modules; `ruff` (with an expanded rule set) and `mypy` now run clean
 
 ### Version 2.0.0 (2025)
 - ✨ Added integrated metrics tracking

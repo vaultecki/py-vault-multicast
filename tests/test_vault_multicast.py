@@ -11,7 +11,6 @@ from vault_multicast import (
     VaultMultiPublisher,
 )
 
-
 # ---------------------------------------------------------------------------
 # MulticastMetrics
 # ---------------------------------------------------------------------------
@@ -172,12 +171,11 @@ class FakeListenerSocket:
 
     def recvfrom(self, bufsize):
         import queue
-        import socket as socket_module
 
         try:
             return self._queue.get(timeout=0.05)
         except queue.Empty:
-            raise socket_module.timeout()
+            raise TimeoutError() from None
 
     def close(self):
         self.closed = True
