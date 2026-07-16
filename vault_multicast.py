@@ -203,6 +203,7 @@ class VaultMultiPublisher(StoppableWorker):
 
                 # Send message
                 message_bytes = current_message.encode("utf-8")
+                assert self._sock is not None
                 self._sock.sendto(message_bytes, (self.group, self.port))
 
                 # Update metrics
@@ -301,7 +302,7 @@ class VaultMultiListener(StoppableWorker):
         # Metrics
         self.metrics = MulticastMetrics()
         self._metrics_lock = threading.Lock()
-        self._service_addresses = set()
+        self._service_addresses: set[str] = set()
 
         # Initialize socket
         self._sock: Optional[socket.socket] = None
@@ -345,6 +346,7 @@ class VaultMultiListener(StoppableWorker):
         while not self._stop_event.is_set():
             try:
                 # Receive message
+                assert self._sock is not None
                 data, address = self._sock.recvfrom(self.buffer_size)
 
                 # Update metrics
@@ -419,6 +421,7 @@ class VaultMultiListener(StoppableWorker):
         with self._metrics_lock:
             self.metrics.reset()
             self._service_addresses.clear()
+            self.metrics.active_services = 0
             logger.info("Listener metrics reset")
 
 

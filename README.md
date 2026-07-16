@@ -9,12 +9,8 @@ A Python library for multicast-based service discovery in local networks with in
 
 - 🚀 **Simple API** - Easy-to-use publisher and listener classes
 - 📡 **Multicast Discovery** - Find devices/services in local network automatically
-- 📊 **Built-in Metrics** - Track packets, bytes, errors, and active services
 - 🔄 **Auto-retry** - Automatic reconnection on errors
-- 🧵 **Thread-safe** - All operations protected with locks
 - 🎯 **PyQt6 Widget** - Ready-to-use GUI component for service discovery
-- ⚡ **Lightweight** - Minimal dependencies and overhead
-- 🛡️ **Context Manager** - Clean resource management with `with` statements
 
 ## Installation
 

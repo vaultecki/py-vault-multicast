@@ -1,7 +1,6 @@
 # Copyright [2025] [ecki]
 # SPDX-License-Identifier: Apache-2.0
 
-import json
 import sys
 import logging
 import threading
@@ -196,7 +195,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         if not self._validate_service_data(data):
             return
 
-        addr = data.get("addr")
+        addr: str = data["addr"]
 
         with self._lock:
             if addr in self.services:
@@ -357,7 +356,7 @@ class TestMainWindow(PyQt6.QtWidgets.QMainWindow):
         self.bsd_data = value
 
         # Display in label
-        result_text = f"<b>Selected Service:</b><br>"
+        result_text = "<b>Selected Service:</b><br>"
         result_text += f"Name: {value.get('name', 'Unknown')}<br>"
         result_text += f"Address: {value.get('addr', 'Unknown')}<br>"
         result_text += f"Type: {value.get('type', 'Unknown')}"
@@ -396,4 +395,3 @@ if __name__ == "__main__":
     # Run test application
     multi_window = TestMainApp()
     multi_window.run()
-    

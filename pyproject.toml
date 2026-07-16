@@ -1,0 +1,7 @@
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "PySignal"
+ignore_missing_imports = true
