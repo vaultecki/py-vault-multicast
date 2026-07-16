@@ -3,6 +3,7 @@
 
 import sys
 import logging
+import queue
 import threading
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
@@ -58,10 +59,17 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         self._lock = threading.Lock()
         self._is_running = True
 
+        # The listener emits recv_signal from its own background thread, but
+        # Qt widgets may only be touched from the GUI thread. Queue the raw
+        # data here and dispatch it on the GUI thread via a timer instead of
+        # handling it directly in the signal callback.
+        self._pending_services: "queue.Queue[Dict[str, Any]]" = queue.Queue()
+
         self._setup_ui()
         self._start_listener()
         self._start_cleanup_timer()
         self._start_metrics_timer()
+        self._start_dispatch_timer()
 
     def _setup_ui(self):
         """Initialize user interface."""
@@ -122,7 +130,9 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         """Start multicast listener."""
         try:
             self.listener = vault_multicast.VaultMultiListener()
-            self.listener.recv_signal.connect(self._on_service_discovered)
+            # Only queue the data here; _dispatch_pending_services() processes
+            # it on the GUI thread. queue.Queue.put() is itself thread-safe.
+            self.listener.recv_signal.connect(self._pending_services.put)
             self.listener.start()
             logger.info("Multicast listener started")
         except Exception as e:
@@ -142,6 +152,21 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         self.metrics_timer = PyQt6.QtCore.QTimer()
         self.metrics_timer.timeout.connect(self._update_metrics_display)
         self.metrics_timer.start(1000)  # Every second
+
+    def _start_dispatch_timer(self):
+        """Start timer that dispatches queued service events on the GUI thread."""
+        self.dispatch_timer = PyQt6.QtCore.QTimer()
+        self.dispatch_timer.timeout.connect(self._dispatch_pending_services)
+        self.dispatch_timer.start(100)  # Every 100ms
+
+    def _dispatch_pending_services(self):
+        """Process service events queued by the listener's background thread."""
+        while True:
+            try:
+                data = self._pending_services.get_nowait()
+            except queue.Empty:
+                break
+            self._on_service_discovered(data)
 
     def _update_metrics_display(self):
         """Update metrics labels with current values."""
@@ -288,9 +313,12 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         if hasattr(self, 'metrics_timer'):
             self.metrics_timer.stop()
 
+        if hasattr(self, 'dispatch_timer'):
+            self.dispatch_timer.stop()
+
         if hasattr(self, 'listener'):
             try:
-                self.listener.recv_signal.disconnect(self._on_service_discovered)
+                self.listener.recv_signal.disconnect(self._pending_services.put)
                 self.listener.stop()
                 logger.info("Listener stopped")
             except Exception as e:

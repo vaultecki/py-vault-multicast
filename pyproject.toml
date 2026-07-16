@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "py-vault-multicast"
-version = "0.1.0"
+version = "2.1.0"
 description = "Multicast-based service discovery in local networks with integrated monitoring and metrics."
 readme = "README.md"
 license = { file = "LICENSE" }

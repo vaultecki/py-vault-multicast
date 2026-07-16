@@ -464,6 +464,14 @@ python -m pytest tests/
 
 ## Changelog
 
+### Version 2.1.0 (2026)
+- 📦 Switched dependency management from `requirements.txt` to `pyproject.toml` (`pip install .` / `.[gui]` / `.[dev]`)
+- 🔄 Migrated signal/slot implementation from PySignal to [psygnal](https://github.com/pyapp-kit/psygnal) (typed, no unreliable weakref behavior on plain callables); now requires Python 3.10+
+- 🐛 Fixed `VaultServiceDiscovery` touching Qt widgets directly from the listener's background thread; discovered services are now queued and dispatched on the GUI thread
+- 🐛 Fixed missing `threading` import in `vault_multicast_service_discovery.py`
+- 🐛 Fixed `VaultMultiListener.reset_metrics()` not resetting `active_services` after clearing tracked addresses
+- ✅ Added a pytest suite covering both modules; `ruff` and `mypy` now run clean
+
 ### Version 2.0.0 (2025)
 - ✨ Added integrated metrics tracking
 - ✨ Added active service counting

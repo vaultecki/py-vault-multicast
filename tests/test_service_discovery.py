@@ -1,3 +1,4 @@
+import threading
 from datetime import datetime, timedelta
 
 import pytest
@@ -152,3 +153,38 @@ class TestVaultServiceDiscovery:
         assert FakeListener.instances[0].stopped
         assert not widget.cleanup_timer.isActive()
         assert not widget.metrics_timer.isActive()
+        assert not widget.dispatch_timer.isActive()
+
+
+class TestGuiThreadDispatch:
+    """The listener emits recv_signal from its own background thread; Qt
+    widgets must only be touched from the GUI thread. Verify that received
+    data is queued rather than applied immediately, and only lands in
+    widget.services once the GUI-thread dispatch timer processes it."""
+
+    def test_emit_is_queued_not_applied_immediately(self, widget):
+        data = {"type": "svc", "addr": "10.0.0.5:1", "name": "Queued"}
+        FakeListener.instances[0].recv_signal.emit(data)
+
+        assert widget.services == {}
+        assert widget._pending_services.qsize() == 1
+
+    def test_dispatch_timer_applies_queued_data(self, widget):
+        data = {"type": "svc", "addr": "10.0.0.5:1", "name": "Queued"}
+        FakeListener.instances[0].recv_signal.emit(data)
+
+        widget._dispatch_pending_services()
+
+        assert "10.0.0.5:1" in widget.services
+        assert widget._pending_services.qsize() == 0
+
+    def test_emit_from_background_thread_is_dispatched_safely(self, widget):
+        data = {"type": "svc", "addr": "10.0.0.6:1", "name": "FromThread"}
+
+        t = threading.Thread(target=FakeListener.instances[0].recv_signal.emit, args=(data,))
+        t.start()
+        t.join(timeout=2)
+
+        widget._dispatch_pending_services()
+
+        assert "10.0.0.6:1" in widget.services
