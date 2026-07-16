@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
-import PySignal
 import pytest
+from psygnal import Signal
 
 import vault_multicast_service_discovery as vsd
 from vault_multicast_service_discovery import ServiceEntry, VaultServiceDiscovery
@@ -37,7 +37,7 @@ class TestServiceEntry:
 class FakeListener:
     """Stand-in for vault_multicast.VaultMultiListener that does no networking."""
 
-    recv_signal = PySignal.ClassSignal()
+    recv_signal = Signal(dict)
     instances = []
 
     def __init__(self, *args, **kwargs):

@@ -8,9 +8,9 @@ version = "0.1.0"
 description = "Multicast-based service discovery in local networks with integrated monitoring and metrics."
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 dependencies = [
-    "PySignal>=1.1.1",
+    "psygnal>=0.10",
 ]
 
 [project.optional-dependencies]
@@ -28,7 +28,3 @@ py-modules = ["vault_multicast", "vault_multicast_service_discovery"]
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true
-
-[[tool.mypy.overrides]]
-module = "PySignal"
-ignore_missing_imports = true

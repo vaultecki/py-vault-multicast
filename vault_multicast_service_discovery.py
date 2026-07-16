@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import PyQt6.QtWidgets
 import PyQt6.QtCore
-import PySignal
+from psygnal import Signal
 import vault_multicast
 
 logger = logging.getLogger(__name__)
@@ -48,7 +48,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
     - Manual refresh capability
     """
 
-    return_signal = PySignal.ClassSignal()
+    return_signal = Signal(dict)
 
     def __init__(self, type_filter: str = ""):
         super().__init__()

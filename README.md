@@ -3,7 +3,7 @@
 A Python library for multicast-based service discovery in local networks with integrated monitoring and metrics.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 ## Features
 
@@ -26,8 +26,8 @@ pip install ".[dev]"
 
 ### Requirements
 
-- Python 3.7+
-- PySignal >= 1.1.1
+- Python 3.10+
+- psygnal >= 0.10
 - PyQt6 (optional, only for GUI components)
 
 ## Quick Start
@@ -188,7 +188,7 @@ VaultMultiListener(
 
 #### Signals
 
-- `recv_signal` - Emitted when message received (PySignal)
+- `recv_signal` - Emitted when message received (psygnal)
 
 ### Metrics
 
@@ -370,7 +370,7 @@ python vault_multicast_service_discovery.py
 All public methods are thread-safe:
 - Metric updates use locks
 - Message updates are atomic
-- Signal emissions are thread-safe (PySignal)
+- Signal emissions are thread-safe (psygnal)
 - Qt operations run on main thread via timers
 
 ## Performance
@@ -486,7 +486,7 @@ python -m pytest tests/
 ## Related Projects
 
 - [mDNS/Zeroconf](https://github.com/jstasiak/python-zeroconf) - Alternative service discovery
-- [PySignal](https://github.com/dgovil/PySignal) - Signal/slot implementation
+- [psygnal](https://github.com/pyapp-kit/psygnal) - Signal/slot implementation
 - [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) - Python Qt bindings
 
 ## Support

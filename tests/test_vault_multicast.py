@@ -331,18 +331,9 @@ class TestVaultMultiListener:
         fake_sock = FakeListenerSocket()
         monkeypatch.setattr(vault_multicast.socket, "socket", lambda *a, **k: fake_sock)
 
-        # PySignal keeps only a weakref to connected slots, so the receiver
-        # must be a live object (a bound method), not a throwaway callable.
-        class Collector:
-            def __init__(self):
-                self.seen = []
-
-            def receive(self, data):
-                self.seen.append(data)
-
-        collector = Collector()
         listener = VaultMultiListener()
-        listener.recv_signal.connect(collector.receive)
+        seen = []
+        listener.recv_signal.connect(seen.append)
 
         listener.start()
         try:
@@ -352,7 +343,7 @@ class TestVaultMultiListener:
         finally:
             listener.stop()
 
-        assert collector.seen == [payload]
+        assert seen == [payload]
 
     def test_reset_metrics_clears_service_addresses(self, monkeypatch):
         fake_sock = FakeListenerSocket()

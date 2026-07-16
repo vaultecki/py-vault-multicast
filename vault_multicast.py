@@ -10,7 +10,7 @@ import time
 from typing import Optional, Callable, Dict, Any
 from dataclasses import dataclass, field
 from datetime import datetime
-import PySignal
+from psygnal import Signal
 
 logger = logging.getLogger(__name__)
 
@@ -273,7 +273,7 @@ class VaultMultiPublisher(StoppableWorker):
 class VaultMultiListener(StoppableWorker):
     """Multicast Listener for Vault messages with integrated metrics."""
 
-    recv_signal = PySignal.ClassSignal()
+    recv_signal = Signal(dict)
 
     def __init__(
             self,
