@@ -1,9 +1,6 @@
 # py-vault-multicast
 
-A Python library for multicast-based service discovery in local networks with integrated monitoring and metrics.
-
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+A Python library for multicast-based service discovery in local networks.
 
 ## Features
 
