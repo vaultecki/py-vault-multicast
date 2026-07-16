@@ -9,7 +9,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional
+from types import TracebackType
+from typing import Any, Callable, Dict, Literal, Optional, Type, TypeVar
 
 from psygnal import Signal
 
@@ -21,6 +22,8 @@ DEFAULT_PORT = 5004
 DEFAULT_TTL = 2
 DEFAULT_TIMEOUT = 2.0
 DEFAULT_BUFFER_SIZE = 1400
+
+_WorkerT = TypeVar("_WorkerT", bound="StoppableWorker")
 
 
 @dataclass
@@ -34,7 +37,7 @@ class MulticastMetrics:
     active_services: int = 0
     start_time: datetime = field(default_factory=datetime.now)
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset all metrics."""
         self.packets_sent = 0
         self.packets_received = 0
@@ -69,7 +72,7 @@ class MulticastMetrics:
 class StoppableWorker:
     """Base class for threads that can be cleanly started and stopped."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -119,12 +122,17 @@ class StoppableWorker:
         """Checks if the thread is running."""
         return self._thread is not None and self._thread.is_alive()
 
-    def __enter__(self):
+    def __enter__(self: _WorkerT) -> _WorkerT:
         """Context Manager Support."""
         self.start()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
+    ) -> Literal[False]:
         """Context Manager Support."""
         self.stop()
         return False
@@ -427,7 +435,7 @@ class VaultMultiListener(StoppableWorker):
             logger.info("Listener metrics reset")
 
 
-def main():
+def main() -> None:
     """Example application."""
     logging.basicConfig(
         level=logging.DEBUG,

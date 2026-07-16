@@ -41,4 +41,7 @@ jobs:
       - name: pytest
         env:
           QT_QPA_PLATFORM: offscreen
-        run: pytest tests/ -v
+        run: >
+          pytest tests/ -v
+          --cov=vault_multicast --cov=vault_multicast_service_discovery
+          --cov-report=term-missing

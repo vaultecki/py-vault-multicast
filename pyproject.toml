@@ -18,6 +18,7 @@ gui = ["PyQt6>=6.5"]
 dev = [
     "PyQt6>=6.5",
     "pytest>=8",
+    "pytest-cov>=5",
     "mypy>=1.10",
     "ruff>=0.6",
 ]
@@ -36,6 +37,10 @@ ignore = [
     "UP045", # non-pep604-annotation-optional: keep Optional[...] for readability
 ]
 
+[tool.coverage.run]
+source = ["vault_multicast", "vault_multicast_service_discovery"]
+
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true
+disallow_untyped_defs = true

@@ -2,6 +2,8 @@ import threading
 from datetime import datetime, timedelta
 from typing import ClassVar
 
+import PyQt6.QtCore
+import PyQt6.QtWidgets
 import pytest
 from psygnal import Signal
 
@@ -45,6 +47,13 @@ class FakeListener:
         self.started = False
         self.stopped = False
         self.metrics_reset = False
+        self.metrics_data = {
+            "packets_received": 0,
+            "bytes_received": 0,
+            "errors": 0,
+            "uptime_seconds": 0.0,
+            "packets_per_second": 0.0,
+        }
         FakeListener.instances.append(self)
 
     def start(self):
@@ -54,13 +63,7 @@ class FakeListener:
         self.stopped = True
 
     def get_metrics(self):
-        return {
-            "packets_received": 0,
-            "bytes_received": 0,
-            "errors": 0,
-            "uptime_seconds": 0.0,
-            "packets_per_second": 0.0,
-        }
+        return self.metrics_data
 
     def reset_metrics(self):
         self.metrics_reset = True
@@ -188,3 +191,71 @@ class TestGuiThreadDispatch:
         widget._dispatch_pending_services()
 
         assert "10.0.0.6:1" in widget.services
+
+
+class TestUpdateMetricsDisplay:
+    def test_updates_labels_from_listener_metrics(self, widget):
+        FakeListener.instances[0].metrics_data = {
+            "packets_received": 42,
+            "bytes_received": 2048,
+            "errors": 3,
+            "uptime_seconds": 12.5,
+            "packets_per_second": 1.75,
+        }
+
+        widget._update_metrics_display()
+
+        assert widget.lbl_packets_received.text() == "Packets Received: 42"
+        assert widget.lbl_bytes_received.text() == "Bytes Received: 2,048 (2.0 KB)"
+        assert widget.lbl_errors.text() == "Errors: 3"
+        assert widget.lbl_uptime.text() == "Uptime: 12s"
+        assert widget.lbl_rate.text() == "Rate: 1.75 pkt/s"
+
+    def test_active_services_counts_only_alive_entries(self, widget):
+        widget._on_service_discovered({"type": "svc", "addr": "10.0.0.7:1"})
+        widget._on_service_discovered({"type": "svc", "addr": "10.0.0.8:1"})
+        widget.services["10.0.0.8:1"].last_seen = datetime.now() - timedelta(
+            seconds=vsd.SERVICE_TIMEOUT_SECONDS + 1
+        )
+
+        widget._update_metrics_display()
+
+        assert widget.lbl_active_services.text() == "Active Services: 1"
+
+
+class TestOnConnectClicked:
+    def test_no_selection_shows_warning(self, widget, monkeypatch):
+        calls = []
+        monkeypatch.setattr(
+            PyQt6.QtWidgets.QMessageBox, "warning", lambda *a, **k: calls.append((a, k))
+        )
+
+        widget._on_connect_clicked()
+
+        assert len(calls) == 1
+
+    def test_selection_not_in_services_does_nothing(self, widget):
+        item = PyQt6.QtWidgets.QTreeWidgetItem(widget.tree)
+        item.setData(0, PyQt6.QtCore.Qt.ItemDataRole.UserRole, "not-tracked")
+        item.setSelected(True)
+
+        seen = []
+        widget.return_signal.connect(seen.append)
+
+        widget._on_connect_clicked()
+
+        assert seen == []
+        assert not FakeListener.instances[0].stopped
+
+    def test_selection_emits_return_signal_and_stops(self, widget):
+        data = {"type": "svc", "addr": "10.0.0.9:1", "name": "Foo"}
+        widget._on_service_discovered(data)
+        widget.tree.topLevelItem(0).setSelected(True)
+
+        seen = []
+        widget.return_signal.connect(seen.append)
+
+        widget._on_connect_clicked()
+
+        assert seen == [data]
+        assert FakeListener.instances[0].stopped

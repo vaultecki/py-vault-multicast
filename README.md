@@ -471,7 +471,8 @@ python -m pytest tests/
 - 🐛 Fixed missing `threading` import in `vault_multicast_service_discovery.py`
 - 🐛 Fixed `VaultMultiListener.reset_metrics()` not resetting `active_services` after clearing tracked addresses
 - 🧹 Removed the now-redundant `threading.Lock` in `VaultServiceDiscovery`; service-dict access is confined to the GUI thread by the dispatch timer above
-- ✅ Added a pytest suite covering both modules; `ruff` (with an expanded rule set) and `mypy` now run clean
+- ✅ Added a pytest suite covering both modules, including the `_on_connect_clicked` and `_update_metrics_display` UI handlers; `ruff` (with an expanded rule set) and `mypy --disallow-untyped-defs` now run clean
+- 📊 Added `pytest-cov` (`--cov-report=term-missing` in CI) for test coverage visibility
 
 ### Version 2.0.0 (2025)
 - ✨ Added integrated metrics tracking

@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 import PyQt6.QtCore
+import PyQt6.QtGui
 import PyQt6.QtWidgets
 from psygnal import Signal
 
@@ -51,7 +52,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
 
     return_signal = Signal(dict)
 
-    def __init__(self, type_filter: str = ""):
+    def __init__(self, type_filter: str = "") -> None:
         super().__init__()
 
         self.type_filter = type_filter
@@ -70,7 +71,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         self._start_metrics_timer()
         self._start_dispatch_timer()
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         """Initialize user interface."""
         main_layout = PyQt6.QtWidgets.QVBoxLayout()
 
@@ -125,7 +126,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         self.setMinimumWidth(600)
         self.setWindowTitle("Vault Service Discovery")
 
-    def _start_listener(self):
+    def _start_listener(self) -> None:
         """Start multicast listener."""
         try:
             self.listener = vault_multicast.VaultMultiListener()
@@ -140,25 +141,25 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
                 self, "Error", f"Failed to start service discovery: {e}"
             )
 
-    def _start_cleanup_timer(self):
+    def _start_cleanup_timer(self) -> None:
         """Start timer for automatic cleanup of old services."""
         self.cleanup_timer = PyQt6.QtCore.QTimer()
         self.cleanup_timer.timeout.connect(self._cleanup_old_services)
         self.cleanup_timer.start(5000)  # Every 5 seconds
 
-    def _start_metrics_timer(self):
+    def _start_metrics_timer(self) -> None:
         """Start timer for metrics display updates."""
         self.metrics_timer = PyQt6.QtCore.QTimer()
         self.metrics_timer.timeout.connect(self._update_metrics_display)
         self.metrics_timer.start(1000)  # Every second
 
-    def _start_dispatch_timer(self):
+    def _start_dispatch_timer(self) -> None:
         """Start timer that dispatches queued service events on the GUI thread."""
         self.dispatch_timer = PyQt6.QtCore.QTimer()
         self.dispatch_timer.timeout.connect(self._dispatch_pending_services)
         self.dispatch_timer.start(100)  # Every 100ms
 
-    def _dispatch_pending_services(self):
+    def _dispatch_pending_services(self) -> None:
         """Process service events queued by the listener's background thread."""
         while True:
             try:
@@ -167,7 +168,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
                 break
             self._on_service_discovered(data)
 
-    def _update_metrics_display(self):
+    def _update_metrics_display(self) -> None:
         """Update metrics labels with current values."""
         if hasattr(self, 'listener'):
             metrics = self.listener.get_metrics()
@@ -207,7 +208,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         # Check type filter: no filter, or the filter matches the type
         return not self.type_filter or self.type_filter in data.get("type", "")
 
-    def _on_service_discovered(self, data: Dict[str, Any]):
+    def _on_service_discovered(self, data: Dict[str, Any]) -> None:
         """Callback when service is discovered.
 
         Args:
@@ -231,7 +232,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
 
         logger.info(f"Service discovered: {data.get('name', 'unknown')} at {addr}")
 
-    def _add_tree_item(self, service: ServiceEntry):
+    def _add_tree_item(self, service: ServiceEntry) -> None:
         """Add service to tree widget."""
         item = PyQt6.QtWidgets.QTreeWidgetItem(self.tree)
         item.setText(0, service.data.get("name", "Unknown Service"))
@@ -240,14 +241,14 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
         item.setData(0, PyQt6.QtCore.Qt.ItemDataRole.UserRole, service.addr)
         service.tree_item = item
 
-    def _update_tree_item(self, service: ServiceEntry):
+    def _update_tree_item(self, service: ServiceEntry) -> None:
         """Update existing tree entry."""
         if service.tree_item:
             service.tree_item.setText(2, service.last_seen.strftime("%H:%M:%S"))
 
-    def _cleanup_old_services(self):
+    def _cleanup_old_services(self) -> None:
         """Remove services not seen for SERVICE_TIMEOUT_SECONDS."""
-        to_remove = []
+        to_remove: list[str] = []
         for addr, service in self.services.items():
             if not service.is_alive:
                 to_remove.append(addr)
@@ -260,7 +261,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
             logger.info(f"Service timeout: {addr}")
             del self.services[addr]
 
-    def _refresh_services(self):
+    def _refresh_services(self) -> None:
         """Manual refresh - removes all services for new search."""
         self.services.clear()
         self.tree.clear()
@@ -270,13 +271,13 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
 
         logger.info("Service list cleared for refresh")
 
-    def _reset_metrics(self):
+    def _reset_metrics(self) -> None:
         """Reset all metrics counters."""
         if hasattr(self, 'listener'):
             self.listener.reset_metrics()
             logger.info("Metrics reset")
 
-    def _on_connect_clicked(self):
+    def _on_connect_clicked(self) -> None:
         """Handler for connect button."""
         selected_items = self.tree.selectedItems()
         if not selected_items:
@@ -295,7 +296,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
             self.stop()
             self.hide()
 
-    def stop(self):
+    def stop(self) -> None:
         """Stop listener and timers."""
         self._is_running = False
 
@@ -316,7 +317,7 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
             except Exception as e:
                 logger.error(f"Error stopping listener: {e}")
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: Optional[PyQt6.QtGui.QCloseEvent]) -> None:
         """Override for clean shutdown."""
         self.stop()
         super().closeEvent(event)
@@ -325,12 +326,12 @@ class VaultServiceDiscovery(PyQt6.QtWidgets.QWidget):
 class TestMainWindow(PyQt6.QtWidgets.QMainWindow):
     """Example main window for testing the service discovery."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
         self.setWindowTitle("Service Discovery Test")
-        self.bsd = None
-        self.bsd_data = None
+        self.bsd: Optional[VaultServiceDiscovery] = None
+        self.bsd_data: Optional[Dict[str, Any]] = None
 
         # Main widget
         central_widget = PyQt6.QtWidgets.QWidget()
@@ -355,21 +356,21 @@ class TestMainWindow(PyQt6.QtWidgets.QMainWindow):
         self.check_timer.timeout.connect(self._check_bsd_widget)
         self.check_timer.start(500)
 
-    def show_bsd_widget(self):
+    def show_bsd_widget(self) -> None:
         """Show the service discovery widget."""
         logger.info("Opening service discovery")
         self.bsd = VaultServiceDiscovery(type_filter="VaultLibrary")
         self.bsd.return_signal.connect(self.on_submit_value)
         self.bsd.show()
 
-    def _check_bsd_widget(self):
+    def _check_bsd_widget(self) -> None:
         """Check if discovery widget was closed."""
         if self.bsd and not self.bsd.isVisible():
             self.bsd.return_signal.disconnect(self.on_submit_value)
             self.bsd.stop()
             self.bsd = None
 
-    def on_submit_value(self, value: Dict[str, Any]):
+    def on_submit_value(self, value: Dict[str, Any]) -> None:
         """Handle selected service data."""
         logger.info(f"Service selected: {value}")
         self.bsd_data = value
@@ -382,7 +383,7 @@ class TestMainWindow(PyQt6.QtWidgets.QMainWindow):
 
         self.lbl_result.setText(result_text)
 
-    def closeEvent(self, event):
+    def closeEvent(self, event: Optional[PyQt6.QtGui.QCloseEvent]) -> None:
         """Clean shutdown."""
         self.check_timer.stop()
         if self.bsd:
@@ -393,12 +394,12 @@ class TestMainWindow(PyQt6.QtWidgets.QMainWindow):
 class TestMainApp:
     """Test application wrapper."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.app = PyQt6.QtWidgets.QApplication(sys.argv)
         self.app.setStyle('Fusion')
         self.tmw = TestMainWindow()
 
-    def run(self):
+    def run(self) -> None:
         """Run the application."""
         self.tmw.show()
         sys.exit(self.app.exec())
