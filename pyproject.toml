@@ -1,3 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py-vault-multicast"
+version = "0.1.0"
+description = "Multicast-based service discovery in local networks with integrated monitoring and metrics."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.7"
+dependencies = [
+    "PySignal>=1.1.1",
+]
+
+[project.optional-dependencies]
+gui = ["PyQt6>=6.5"]
+dev = [
+    "PyQt6>=6.5",
+    "pytest>=8",
+    "mypy>=1.10",
+    "ruff>=0.6",
+]
+
+[tool.setuptools]
+py-modules = ["vault_multicast", "vault_multicast_service_discovery"]
+
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true

@@ -15,7 +15,13 @@ A Python library for multicast-based service discovery in local networks with in
 ## Installation
 
 ```bash
-pip install -r requirements.txt
+pip install .
+
+# with the optional PyQt6 GUI widget
+pip install ".[gui]"
+
+# with dev tools (PyQt6, pytest, mypy, ruff)
+pip install ".[dev]"
 ```
 
 ### Requirements
@@ -450,7 +456,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ```bash
 git clone https://github.com/yourusername/py-vault-multicast.git
 cd py-vault-multicast
-pip install -r requirements.txt
+pip install ".[dev]"
 ```
 
 ### Running Tests

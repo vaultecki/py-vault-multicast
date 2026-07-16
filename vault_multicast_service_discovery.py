@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import PyQt6.QtWidgets
 import PyQt6.QtCore
 import PySignal
-import libs.multicast.vault_multicast as vault_multicast
+import vault_multicast
 
 logger = logging.getLogger(__name__)
 
