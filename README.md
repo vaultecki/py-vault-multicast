@@ -1,20 +1,22 @@
 # py-vault-multicast
 
-A Python library for multicast-based service discovery in local networks.
+A small Python module for service discovery over UDP multicast on a local network: a publisher that periodically broadcasts a message, and a listener that receives such messages. Plus an optional PyQt6 widget that displays discovered services in a list.
 
-## Features
+## What it does
 
-- 🚀 **Simple API** - Easy-to-use publisher and listener classes
-- 📡 **Multicast Discovery** - Find devices/services in local network automatically
-- 🔄 **Auto-retry** - Automatic reconnection on errors
-- 🎯 **PyQt6 Widget** - Ready-to-use GUI component for service discovery
+- `VaultMultiPublisher` sends a (freely chosen) message via multicast at regular intervals.
+- `VaultMultiListener` listens on the multicast group, parses received messages as JSON, and delivers them via a callback and/or a psygnal signal.
+- Both keep simple counters (packets/bytes sent or received, errors, uptime).
+- `VaultServiceDiscovery` is a PyQt6 widget that wraps the listener and shows discovered services as a list with a timeout.
+
+This is intentionally simple – not a replacement for mDNS/Zeroconf, no encryption, no deduplication across multiple network interfaces. Meant for simple "who's reachable on the network" scenarios on your own LAN.
 
 ## Installation
 
 ```bash
 pip install .
 
-# with the optional PyQt6 GUI widget
+# with the optional PyQt6 widget
 pip install ".[gui]"
 
 # with dev tools (PyQt6, pytest, mypy, ruff)
@@ -25,42 +27,36 @@ pip install ".[dev]"
 
 - Python 3.10+
 - psygnal >= 0.10
-- PyQt6 (optional, only for GUI components)
+- PyQt6 >= 6.5 (only for the GUI widget, optional)
 
-## Quick Start
-
-### Publisher (Broadcasting Service)
+## Example: Publisher
 
 ```python
 import vault_multicast
 import json
 import time
 
-# Create service information
 service_info = {
     "type": "VaultLibrary",
     "name": "My Service",
     "addr": "192.168.1.100:8080",
-    "version": "1.0.0"
 }
 
-# Start publisher
 publisher = vault_multicast.VaultMultiPublisher(
     message=json.dumps(service_info),
-    timeout=2.0  # Broadcast every 2 seconds
+    timeout=2.0,  # send interval in seconds
 )
-
 publisher.start()
 
-# Check metrics
 time.sleep(10)
-metrics = publisher.get_metrics()
-print(f"Sent {metrics['packets_sent']} packets")
+print(publisher.get_metrics())
 
 publisher.stop()
 ```
 
-### Listener (Discovering Services)
+Note: after `start()`, the publisher waits 5 seconds before sending its first message.
+
+## Example: Listener
 
 ```python
 import vault_multicast
@@ -68,38 +64,18 @@ import vault_multicast
 def on_service_found(service_data):
     print(f"Found service: {service_data}")
 
-# Start listener
-listener = vault_multicast.VaultMultiListener(
-    callback=on_service_found
-)
-
+listener = vault_multicast.VaultMultiListener(callback=on_service_found)
 listener.start()
 
-# Or use signals
+# alternatively, via the psygnal signal instead of a callback:
 listener.recv_signal.connect(on_service_found)
-
-# Check metrics
-metrics = listener.get_metrics()
-print(f"Active services: {metrics['active_services']}")
-print(f"Received {metrics['packets_received']} packets")
 
 listener.stop()
 ```
 
-### Context Manager
+Also usable as a context manager (`with vault_multicast.VaultMultiListener() as listener: ...`), which calls `start()`/`stop()` automatically.
 
-```python
-import vault_multicast
-
-# Automatic cleanup
-with vault_multicast.VaultMultiListener() as listener:
-    input("Press Enter to stop...\n")
-    print(listener.get_metrics())
-```
-
-## GUI Component
-
-### Service Discovery Widget
+## GUI widget
 
 ```python
 import sys
@@ -108,119 +84,82 @@ from vault_multicast_service_discovery import VaultServiceDiscovery
 
 app = QApplication(sys.argv)
 
-# Create discovery widget with type filter
 discovery = VaultServiceDiscovery(type_filter="VaultLibrary")
-
-# Handle service selection
-def on_service_selected(service_data):
-    print(f"Selected: {service_data}")
-
-discovery.return_signal.connect(on_service_selected)
+discovery.return_signal.connect(lambda data: print("Selected:", data))
 discovery.show()
 
 sys.exit(app.exec())
 ```
 
-**Features:**
-- Real-time service list with auto-refresh
-- Automatic timeout (removes services after 30 seconds)
-- Live metrics display (packets, bytes, active services)
-- Manual refresh button
-- Metrics reset functionality
+The widget shows a list of discovered services (timed out after 30 seconds without a new message), a "Refresh" button, and a small metrics display. Messages from the listener thread are buffered in a queue and processed on the GUI thread via a timer – no Qt widgets are touched directly from the background thread.
 
-## API Reference
+## API
 
 ### VaultMultiPublisher
 
-Broadcasts service information via multicast.
-
-#### Constructor
-
 ```python
 VaultMultiPublisher(
-    group: str = "224.1.1.1",      # Multicast group
-    port: int = 5004,               # UDP port
-    ttl: int = 2,                   # Time-to-live
-    timeout: float = 2.0,           # Seconds between broadcasts
-    message: str = "..."            # Message to broadcast
+    group: str = "224.1.1.1",
+    port: int = 5004,
+    ttl: int = 2,
+    timeout: float = 2.0,      # seconds between broadcasts
+    message: str = "there is nothing to see",
 )
 ```
 
-#### Methods
-
-- `start()` - Start broadcasting
-- `stop(timeout=5.0)` - Stop broadcasting
-- `update_message(message)` - Update broadcast message
-- `get_metrics()` - Get current metrics dictionary
-- `reset_metrics()` - Reset all counters
-- `is_running()` - Check if publisher is active
-
-#### Properties
-
-- `message` - Get/set current broadcast message (thread-safe)
+- `start()` / `stop(timeout=5.0)`
+- `update_message(message)` or the `message` property (thread-safe)
+- `get_metrics()` / `reset_metrics()`
+- `is_running()`
+- On a send error, the socket is rebuilt and sending continues; if that also fails, the send loop aborts.
 
 ### VaultMultiListener
 
-Listens for multicast service announcements.
-
-#### Constructor
-
 ```python
 VaultMultiListener(
-    group: str = "224.1.1.1",      # Multicast group
-    port: int = 5004,               # UDP port
-    timeout: float = 2.0,           # Socket timeout
-    buffer_size: int = 1400,        # Receive buffer size
-    callback: Callable = None       # Optional callback function
+    group: str = "224.1.1.1",
+    port: int = 5004,
+    timeout: float = 2.0,      # socket timeout, determines polling interval
+    buffer_size: int = 1400,
+    callback: Callable[[dict], None] | None = None,
 )
 ```
 
-#### Methods
-
-- `start()` - Start listening
-- `stop(timeout=5.0)` - Stop listening
-- `get_metrics()` - Get current metrics dictionary
-- `reset_metrics()` - Reset all counters
-- `is_running()` - Check if listener is active
-
-#### Signals
-
-- `recv_signal` - Emitted when message received (psygnal)
+- `start()` / `stop(timeout=5.0)`
+- `get_metrics()` / `reset_metrics()`
+- `is_running()`
+- `recv_signal` (psygnal `Signal(dict)`) – emitted for every received, valid JSON message
+- Invalid JSON or UTF-8 is dropped and counted as an error; a socket error outside of the `stop()` path ends the receive loop without an automatic retry.
 
 ### Metrics
 
-Both publisher and listener track the following metrics:
-
 ```python
 {
-    "packets_sent": 150,           # Publisher only
-    "packets_received": 450,       # Listener only
-    "bytes_sent": 45000,           # Publisher only
-    "bytes_received": 135000,      # Listener only
-    "errors": 0,                   # Error count
-    "active_services": 3,          # Listener only (unique services)
-    "uptime_seconds": 300.5,       # Time since start
-    "packets_per_second": 1.5      # Average rate
+    "packets_sent": 150,        # publisher only
+    "packets_received": 450,    # listener only
+    "bytes_sent": 45000,        # publisher only
+    "bytes_received": 135000,   # listener only
+    "errors": 0,
+    "active_services": 3,       # listener only, count of distinct "addr" values seen
+    "uptime_seconds": 300.5,
+    "packets_per_second": 1.5,
 }
 ```
 
-## Message Format
+## Message format
 
-Services should broadcast JSON messages with at least these fields:
+Any JSON object is accepted; the widget (`VaultServiceDiscovery`) requires the fields `type` and `addr`, otherwise the message is dropped:
 
 ```json
 {
-    "type": "VaultLibrary",           // Service type (required)
-    "name": "My Service",             // Display name
-    "addr": "192.168.1.100:8080",    // Connection address (required)
-    "version": "1.0.0",              // Version string
-    "timestamp": 1234567890.123      // Unix timestamp
+    "type": "VaultLibrary",
+    "name": "My Service",
+    "addr": "192.168.1.100:8080",
+    "version": "1.0.0"
 }
 ```
 
 ## Configuration
-
-### Default Settings
 
 ```python
 DEFAULT_MULTICAST_GROUP = "224.1.1.1"
@@ -228,286 +167,86 @@ DEFAULT_PORT = 5004
 DEFAULT_TTL = 2
 DEFAULT_TIMEOUT = 2.0
 DEFAULT_BUFFER_SIZE = 1400
-SERVICE_TIMEOUT_SECONDS = 30  # GUI component
+SERVICE_TIMEOUT_SECONDS = 30  # GUI widget only
 ```
 
-### Custom Configuration
+Group, port, etc. can be overridden when constructing the publisher/listener (see the constructor signatures above).
 
-```python
-# Use different multicast group and port
-publisher = vault_multicast.VaultMultiPublisher(
-    group="239.255.255.250",
-    port=1900,
-    ttl=4
-)
+## Thread safety
 
-listener = vault_multicast.VaultMultiListener(
-    group="239.255.255.250",
-    port=1900,
-    buffer_size=2048
-)
-```
-
-## Examples
-
-### Complete Publisher/Listener Example
-
-```python
-import vault_multicast
-import json
-import time
-import logging
-
-logging.basicConfig(level=logging.INFO)
-
-# Publisher thread
-service_info = {
-    "type": "TestService",
-    "name": "Example Service",
-    "addr": "127.0.0.1:8080",
-    "timestamp": time.time()
-}
-
-publisher = vault_multicast.VaultMultiPublisher(
-    message=json.dumps(service_info),
-    timeout=1.0
-)
-publisher.start()
-
-# Listener thread
-def on_service(data):
-    print(f"Discovered: {data['name']} at {data['addr']}")
-
-listener = vault_multicast.VaultMultiListener(callback=on_service)
-listener.start()
-
-# Run for 30 seconds
-try:
-    time.sleep(30)
-finally:
-    # Show metrics
-    print("\nPublisher Metrics:")
-    print(publisher.get_metrics())
-    
-    print("\nListener Metrics:")
-    print(listener.get_metrics())
-    
-    # Clean shutdown
-    publisher.stop()
-    listener.stop()
-```
-
-### Export Metrics to JSON
-
-```python
-import json
-from datetime import datetime
-
-def export_metrics(publisher, listener, filename):
-    """Export metrics to JSON file."""
-    data = {
-        "timestamp": datetime.now().isoformat(),
-        "publisher": publisher.get_metrics(),
-        "listener": listener.get_metrics()
-    }
-    
-    with open(filename, 'w') as f:
-        json.dump(data, f, indent=2)
-    
-    print(f"Metrics exported to {filename}")
-
-# Usage
-export_metrics(publisher, listener, "metrics.json")
-```
-
-### Dynamic Message Updates
-
-```python
-import vault_multicast
-import json
-import time
-
-publisher = vault_multicast.VaultMultiPublisher(
-    message=json.dumps({"type": "test", "addr": "127.0.0.1:8080"}),
-    timeout=1.0
-)
-publisher.start()
-
-# Update message every 10 seconds
-for i in range(10):
-    time.sleep(10)
-    
-    new_message = {
-        "type": "test",
-        "addr": "127.0.0.1:8080",
-        "iteration": i,
-        "timestamp": time.time()
-    }
-    
-    publisher.update_message(json.dumps(new_message))
-    print(f"Updated message (iteration {i})")
-
-publisher.stop()
-```
+- Metrics and the publisher message are protected by locks.
+- psygnal's `recv_signal` can be emitted from any thread, but connected slots run in the emitting thread, not automatically on the GUI thread. `VaultServiceDiscovery` handles this explicitly via a queue plus a GUI timer – if you connect your own Qt slots directly to `recv_signal`, you need to handle that yourself.
 
 ## Testing
 
-Run the built-in test:
+```bash
+python -m pytest tests/
+```
+
+The test suite covers both modules (as of this writing: ~40 tests across `test_vault_multicast.py` and `test_service_discovery.py`). CI (`.github/workflows/ci.yml`) runs on Python 3.10–3.12 with `ruff check`, `mypy`, and `pytest --cov`.
+
+Manual smoke test:
 
 ```bash
-# Test publisher and listener
 python vault_multicast.py
-
-# Test GUI component
 python vault_multicast_service_discovery.py
 ```
 
-## Thread Safety
-
-All public methods are thread-safe:
-- Metric updates use locks
-- Message updates are atomic
-- Signal emissions are thread-safe (psygnal)
-- Qt operations run on main thread via timers
-
-## Performance
-
-### Benchmarks
-
-Typical performance on modern hardware:
-- Publisher: ~0.5 packets/second (with 2s timeout)
-- Listener: Handles 1000+ packets/second
-- Memory: ~5-10 MB per instance
-- CPU: <1% during normal operation
-- Metric overhead: <2% performance impact
-
-### Optimization Tips
-
-1. **Adjust broadcast interval**: Longer intervals reduce network traffic
-2. **Filter by type**: Use type_filter in GUI to reduce processing
-3. **Buffer size**: Increase for high-traffic networks
-4. **Cleanup interval**: Adjust SERVICE_TIMEOUT for your use case
-
 ## Troubleshooting
 
-### No Services Discovered
+No services found:
+1. Check the firewall (UDP, port 5004 by default)
+2. Make sure all devices are on the same network/VLAN
+3. Choose a TTL appropriate for the network topology (default 2)
 
-1. Check firewall allows UDP multicast (port 5004)
-2. Verify devices are on same network/VLAN
-3. Check multicast routing is enabled
-4. Confirm TTL is sufficient for network topology
+High error rate:
+1. Check the message format (must be valid JSON)
+2. Make sure `buffer_size` is large enough (default 1400 bytes)
 
-```bash
-# Linux: Enable multicast routing
-sudo route add -net 224.0.0.0 netmask 240.0.0.0 dev eth0
-```
+## What's missing
 
-### High Error Rate
-
-1. Check network stability
-2. Verify message format is valid JSON
-3. Ensure messages are under buffer_size (default 1400 bytes)
-4. Check for UDP packet loss
-
-```python
-# Monitor errors
-metrics = listener.get_metrics()
-if metrics['errors'] > 10:
-    print("High error rate detected!")
-    listener.reset_metrics()
-```
-
-### Services Timeout Too Quickly
-
-Adjust timeout in service discovery:
-
-```python
-# In vault_multicast_service_discovery.py
-SERVICE_TIMEOUT_SECONDS = 60  # Increase to 60 seconds
-```
+There are no benchmarks or reliable performance numbers for this project – earlier versions of this file had made-up figures, which have been removed. Measure it yourself if you need numbers.
 
 ## License
 
-Apache License 2.0
-
-Copyright [2025] [ecki]
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+Apache License 2.0, Copyright 2025 ecki. See [LICENSE](LICENSE).
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-### Development Setup
+Pull requests are welcome.
 
 ```bash
-git clone https://github.com/yourusername/py-vault-multicast.git
+git clone git@github.com:vaultecki/py-vault-multicast.git
 cd py-vault-multicast
 pip install ".[dev]"
-```
-
-### Running Tests
-
-```bash
 python -m pytest tests/
 ```
 
 ## Changelog
 
 ### Version 2.1.0 (2026)
-- 📦 Switched dependency management from `requirements.txt` to `pyproject.toml` (`pip install .` / `.[gui]` / `.[dev]`)
-- 🔄 Migrated signal/slot implementation from PySignal to [psygnal](https://github.com/pyapp-kit/psygnal) (typed, no unreliable weakref behavior on plain callables); now requires Python 3.10+
-- 🐛 Fixed `VaultServiceDiscovery` touching Qt widgets directly from the listener's background thread; discovered services are now queued and dispatched on the GUI thread
-- 🐛 Fixed missing `threading` import in `vault_multicast_service_discovery.py`
-- 🐛 Fixed `VaultMultiListener.reset_metrics()` not resetting `active_services` after clearing tracked addresses
-- 🧹 Removed the now-redundant `threading.Lock` in `VaultServiceDiscovery`; service-dict access is confined to the GUI thread by the dispatch timer above
-- ✅ Added a pytest suite covering both modules, including the `_on_connect_clicked` and `_update_metrics_display` UI handlers; `ruff` (with an expanded rule set) and `mypy --disallow-untyped-defs` now run clean
-- 📊 Added `pytest-cov` (`--cov-report=term-missing` in CI) for test coverage visibility
+- Switched dependency management from `requirements.txt` to `pyproject.toml`
+- Migrated from PySignal to [psygnal](https://github.com/pyapp-kit/psygnal); now requires Python 3.10+
+- Fixed: `VaultServiceDiscovery` was touching Qt widgets directly from the listener thread; now goes through a queue + GUI timer
+- Fixed: missing `threading` import in `vault_multicast_service_discovery.py`
+- Fixed: `VaultMultiListener.reset_metrics()` did not reset `active_services`
+- Removed a lock in `VaultServiceDiscovery` that became redundant as a result
+- Added a pytest suite for both modules; `ruff` and `mypy --disallow-untyped-defs` run in CI
 
 ### Version 2.0.0 (2025)
-- ✨ Added integrated metrics tracking
-- ✨ Added active service counting
-- ✨ Enhanced GUI with real-time metrics
-- ✨ Added automatic service timeout
-- ✨ Improved thread safety
-- ✨ Better error handling and logging
-- 🐛 Fixed race condition in listener thread
-- 🐛 Fixed memory leak in service tracking
+- Added metrics (packets, bytes, errors, active services, uptime)
+- Automatic service timeout in the GUI widget
+- Various fixes to thread safety and error handling
 
 ### Version 1.0.0 (2025)
-- 🎉 Initial release
-- Publisher and Listener classes
-- PyQt6 service discovery widget
-- Basic signal support
+- Initial version: publisher, listener, PyQt6 widget
 
-## Related Projects
+## Related projects
 
-- [mDNS/Zeroconf](https://github.com/jstasiak/python-zeroconf) - Alternative service discovery
-- [psygnal](https://github.com/pyapp-kit/psygnal) - Signal/slot implementation
-- [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) - Python Qt bindings
+- [python-zeroconf](https://github.com/jstasiak/python-zeroconf) – mDNS/Zeroconf, considerably more mature for service discovery
+- [psygnal](https://github.com/pyapp-kit/psygnal)
+- [PyQt6](https://www.riverbankcomputing.com/software/pyqt/)
 
-## Support
+## Contact
 
-- 📧 Email: support@example.com
-- 🐛 Issues: [GitHub Issues](https://github.com/yourusername/py-vault-multicast/issues)
-- 💬 Discussions: [GitHub Discussions](https://github.com/yourusername/py-vault-multicast/discussions)
-
-## Authors
-
-- **ecki** - *Initial work and maintenance*
-
-## Acknowledgments
-
-- Thanks to all contributors
-- Inspired by various service discovery protocols
-- Built with Python and PyQt6
+Issues via [GitHub](https://github.com/vaultecki/py-vault-multicast/issues).
